@@ -1,0 +1,690 @@
+---
+title: "Imputing Scores"
+author: "Elaine Y. Chu and Tatiana VM"
+date: "November 27, 2019"
+output: 
+  html_document:
+     theme: cerulean
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.path='Figures/', fig.ext='jpg', fig.width=8, fig.height=8, dpi=180)
+
+setwd('C:/Users/elain/Box Sync/Projects/w_Tatiana/ImputingScores/Analysis')
+
+library(readxl)
+library(tidyverse)
+library(missForest)
+#library(mice)
+library(VIM)
+library(imputeMissings)
+library(irr)
+
+kyra_theme <- theme_bw() + theme(legend.background=element_blank(),
+                                 legend.key=element_blank(),
+                                 panel.grid.major=element_blank(),
+                                 panel.grid.minor=element_blank(),
+                                 legend.title=element_text(face='plain',size=14),
+                                 axis.title=element_text(size=15,lineheight=.9,vjust=.3),
+                                 axis.text=element_text(size=12),
+                                 axis.title.x=element_text(vjust=.2),
+                                 axis.title.y=element_text(vjust=.3),
+                                 legend.text=element_text(size=12))
+
+```
+
+## Project Description
+The goal of this project is to provide a method of imputing missing dental morphological trait scores, which will allow for more flexibility in dental morphological statistical analysis by providing a way to combat missing data - the main rationale for the use of frequencies. 
+
+The first step in this project will be to evaluate current imputation methods to see which method can best imitate dental morphology data. The methods used for this part of the project will follow that of Kenyhercz et al. (2019), which had similar questions regarding cranial morphological traits. Their rationale for exploring imputation include: 1) larger reference sample sizes to conducte more complete, high-powered statistics, and 2) increased information for individual cases. In their article, Kenyhercz and colleagues compared four established imputation methods: 
+1. Hot Deck (HD)  
+2. Iterative Robust Model-Based Imputation (IRMI) - Maybe  
+3. k-Nearest Neighbors (KNN)  
+4. Variable Medians (VM)  
+
+For this project, we might add two additional imputation methods using the MICE package (isn't working right now):  
+5. Bayesian Polytomous Regression (BPR)  
+6. Proportional Odds Model (POM)
+
+To simulate missing data, they used an R script to remove datapoints from a complete cranial morphology dataset. This random removal of data was completed at 10, 25, 50, 75, and 90%. Each missing dataset was simulated 500 times and the results of each imputation method was compared within and between missing datasets to evaulate the imputability of each cranial morphology, as well as the extent of missing data that can be handled. 
+
+We will do the same with a complete dataset of dental morphological traits. The data was first cleaned to only incude one side (prefer L, replaced with R if neeeded) and the score representing highest-expression for each trait was selected. These methods are in accordance with previous dental morpological studies (citations).
+
+```{r Simulate Missing Data}
+og <- read_excel('RawData_UTK_TS.xlsx', sheet='GRS_HE_Clean')  # read in original dataset
+
+dent <- og[c(1:34),c(2:10)]  # select only dental traits
+#dent[dent==-1] <- NA  # replace -1 with NA
+
+#base <- drop_na(dent)  # remove rows with any missing data
+base <- dent
+
+summary(base)  # summary of our dataset
+
+
+## For now, we will use a smaller dataset to test the code
+nvars <- ncol(base)  # count number of variables that need to be comapred using Cohen's Kappa
+vars <- colnames(base)
+nsims <- 500
+methods <- c("HD","KNN","VM")
+nmethods <- length(methods)
+```
+
+
+## Data Simulation and Imputation comparisons
+Next, we will simulate the 5 datasets with various amounts of missing data (pct = 10, 25, 50, 75, 90). Here, we will use prodNA() from the 'missForest' package, which uses randomForest to randomly replace cells with NA up to a specified percentage.
+
+For each percentage of missing data, 500 simulated datasets will be produced. Then, each of the 6 imputation methods will be conducted on each data set (N=500). The imputated datasets will each be compared to the original 'base' dataset using Cohen's Kappa via the 'irr' package. The Kappa statistic (k_stat) will be saved for each of the 500 simulations x 6 imputation methods x dental traits. The mean and standard deviation for k of each imputation method will be calculated and stored for comparision in a table.
+
+First, we will start with pct=.1:
+
+```{r Ten Percent Missing}
+for(i in 1:nmethods){
+     filename <- paste0(methods[i],'_10.csv')
+     df <- as.data.frame(matrix(0,ncol=nvars,nrow=nsims))
+     colnames(df) <- vars
+     ten_df <- as.data.frame(matrix(0,ncol=nvar))
+     
+     if(i == 1){
+          print('Performing Hot Deck Imputation')
+          for(j in 1:nsims){
+               ten <- prodNA(base, noNA=.1)
+               HD <- hotdeck(ten, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],HD[,k])
+                    HD_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- HD_val$value
+               }
+               ten_df <- rbind(ten_df,ten)
+          }
+     }     
+#     if(i == 2){
+#          print('Performing Iterative Robust Model-Based Imputation')
+#          for(j in 1:nsims){
+#               ten <- prodNA(base, noNA=.1)
+#               IRMI <- irmi(ten, imp_var=F)
+               
+#               for(k in 1:nvars){
+#                    comp_matx <- cbind(base[,k],IRMI[,k])
+#                    IRMI_val <- kappa2(comp_matx, weight="equal")
+#                    df[j,k] <- IRMI_val$value
+#               }
+#          }
+#     }   
+     if(i == 2){
+          print('Performing K-Nearest Neighbors Imputation')
+          for(j in 1:nsims){
+               ten <- prodNA(base, noNA=.1)
+               KNN <- kNN(ten, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],KNN[,k])
+                    KNN_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- KNN_val$value
+               }
+          }
+     }
+     if(i == 3){
+          print('Performing Variable Median Imputation')
+          for(j in 1:nsims){
+               ten <- prodNA(base, noNA=.1)
+               VM <- impute(ten)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],VM[,k])
+                    VM_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- VM_val$value
+               }
+          }
+     }
+    # path <- paste0('Kappa_Files/',filename)
+     write.csv(df, filename)
+}
+
+## Import simulated imputations for each tooth
+HD10 <- read.csv("HD_10.csv",row.names=1)
+KNN10 <- read.csv("KNN_10.csv",row.names=1)
+VM10 <- read.csv("VM_10.csv",row.names=1)
+
+## Create df to store kappa means
+ten_final_means <- as.data.frame(matrix(0,ncol=nmethods+1,nrow=nvars+1))
+rownames(ten_final_means) <- c(vars,"Method_mean")
+colnames(ten_final_means) <- c(methods,"Trait_mean")
+
+for(m in 1:nmethods){
+     for(v in 1:nvars){
+          if(m == 1){
+               ten_final_means[v,m] <- mean(HD10[,v])
+          }
+          if(m == 2){
+               ten_final_means[v,m] <- mean(KNN10[,v])
+          }
+          if(m == 3){
+               ten_final_means[v,m] <- mean(VM10[,v])
+          }
+     }
+}
+for(n in 1:nvars){
+     ten_final_means[n,(nmethods+1)] <- rowMeans(ten_final_means[n,c(1:nmethods)])
+}
+for(o in 1:nmethods){
+     ten_final_means[(nvars+1),o] <- mean(ten_final_means[c(1:nvars),o])
+}
+
+
+write.csv(ten_final_means,"ten_means.csv")
+
+print(ten_final_means)
+```
+
+Here, we see the kappa means for all 500 simulations for each method by trait and trait kappa means. 
+
+Next, we will conduct the same analysis on pct=.25 missing data.
+
+```{r Twenty-Five Percent Missing}
+for(i in 1:nmethods){
+     filename <- paste0(methods[i],'_25.csv')
+     df <- as.data.frame(matrix(0,ncol=nvars,nrow=nsims))
+     colnames(df) <- vars
+     
+     if(i == 1){
+          print('Performing Hot Deck Imputation')
+          for(j in 1:nsims){
+               twofive <- prodNA(base, noNA=.25)
+               HD <- hotdeck(twofive, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],HD[,k])
+                    HD_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- HD_val$value
+               }
+          }
+     }     
+#     if(i == 2){
+#          print('Performing Iterative Robust Model-Based Imputation')
+#          for(j in 1:nsims){
+#               twofive <- prodNA(base, noNA=.1)
+#               IRMI <- irmi(twofive, imp_var=F)
+               
+#               for(k in 1:nvars){
+#                    comp_matx <- cbind(base[,k],IRMI[,k])
+#                    IRMI_val <- kappa2(comp_matx, weight="equal")
+#                    df[j,k] <- IRMI_val$value
+#               }
+#          }
+#     }   
+     if(i == 2){
+          print('Performing K-Nearest Neighbors Imputation')
+          for(j in 1:nsims){
+               twofive <- prodNA(base, noNA=.1)
+               KNN <- kNN(twofive, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],KNN[,k])
+                    KNN_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- KNN_val$value
+               }
+          }
+     }
+     if(i == 3){
+          print('Performing Variable Median Imputation')
+          for(j in 1:nsims){
+               twofive <- prodNA(base, noNA=.1)
+               VM <- impute(twofive)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],VM[,k])
+                    VM_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- VM_val$value
+               }
+          }
+     }
+    # path <- paste0('Kappa_Files/',filename)
+     write.csv(df, filename)
+}
+
+## Import simulated imputations for each tooth
+HD25 <- read.csv("HD_25.csv",row.names=1)
+KNN25 <- read.csv("KNN_25.csv",row.names=1)
+VM25 <- read.csv("VM_25.csv",row.names=1)
+
+## Create df to store kappa means
+twofive_final_means <- as.data.frame(matrix(0,ncol=nmethods+1,nrow=nvars+1))
+rownames(twofive_final_means) <- c(vars,"Method_mean")
+colnames(twofive_final_means) <- c(methods,"Trait_mean")
+
+for(m in 1:nmethods){
+     for(v in 1:nvars){
+          if(m == 1){
+               twofive_final_means[v,m] <- mean(HD25[,v])
+          }
+          if(m == 2){
+               twofive_final_means[v,m] <- mean(KNN25[,v])
+          }
+          if(m == 3){
+               twofive_final_means[v,m] <- mean(VM25[,v])
+          }
+     }
+}
+for(n in 1:nvars){
+     twofive_final_means[n,(nmethods+1)] <- rowMeans(twofive_final_means[n,c(1:nmethods)])
+}
+for(o in 1:nmethods){
+     twofive_final_means[(nvars+1),o] <- mean(twofive_final_means[c(1:nvars),o])
+}
+
+
+write.csv(twofive_final_means,"twofive_means.csv")
+
+print(twofive_final_means)
+```
+
+Next, pct=.5 missing data.
+
+```{r Fifty Percent Missing}
+for(i in 1:nmethods){
+     filename <- paste0(methods[i],'_50.csv')
+     df <- as.data.frame(matrix(0,ncol=nvars,nrow=nsims))
+     colnames(df) <- vars
+     
+     if(i == 1){
+          print('Performing Hot Deck Imputation')
+          for(j in 1:nsims){
+               fiveoh <- prodNA(base, noNA=.5)
+               HD <- hotdeck(fiveoh, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],HD[,k])
+                    HD_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- HD_val$value
+               }
+          }
+     }     
+#     if(i == 2){
+#          print('Performing Iterative Robust Model-Based Imputation')
+#          for(j in 1:nsims){
+#               fiveoh <- prodNA(base, noNA=.5)
+#               IRMI <- irmi(fiveoh, imp_var=F)
+               
+#               for(k in 1:nvars){
+#                    comp_matx <- cbind(base[,k],IRMI[,k])
+#                    IRMI_val <- kappa2(comp_matx, weight="equal")
+#                    df[j,k] <- IRMI_val$value
+#               }
+#          }
+#     }   
+     if(i == 2){
+          print('Performing K-Nearest Neighbors Imputation')
+          for(j in 1:nsims){
+               fiveoh <- prodNA(base, noNA=.5)
+               KNN <- kNN(fiveoh, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],KNN[,k])
+                    KNN_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- KNN_val$value
+               }
+          }
+     }
+     if(i == 3){
+          print('Performing Variable Median Imputation')
+          for(j in 1:nsims){
+               fiveoh <- prodNA(base, noNA=.5)
+               VM <- impute(fiveoh)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],VM[,k])
+                    VM_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- VM_val$value
+               }
+          }
+     }
+    # path <- paste0('Kappa_Files/',filename)
+     write.csv(df, filename)
+}
+
+## Import simulated imputations for each tooth
+HD50 <- read.csv("HD_50.csv",row.names=1)
+KNN50 <- read.csv("KNN_50.csv",row.names=1)
+VM50 <- read.csv("VM_50.csv",row.names=1)
+
+## Create df to store kappa means
+fiveoh_final_means <- as.data.frame(matrix(0,ncol=nmethods+1,nrow=nvars+1))
+rownames(fiveoh_final_means) <- c(vars,"Method_mean")
+colnames(fiveoh_final_means) <- c(methods,"Trait_mean")
+
+for(m in 1:nmethods){
+     for(v in 1:nvars){
+          if(m == 1){
+               fiveoh_final_means[v,m] <- mean(HD50[,v])
+          }
+          if(m == 2){
+               fiveoh_final_means[v,m] <- mean(KNN50[,v])
+          }
+          if(m == 3){
+               fiveoh_final_means[v,m] <- mean(VM50[,v])
+          }
+     }
+}
+for(n in 1:nvars){
+     fiveoh_final_means[n,(nmethods+1)] <- rowMeans(fiveoh_final_means[n,c(1:nmethods)])
+}
+for(o in 1:nmethods){
+     fiveoh_final_means[(nvars+1),o] <- mean(fiveoh_final_means[c(1:nvars),o])
+}
+
+
+write.csv(fiveoh_final_means,"fiveoh_means.csv")
+
+print(fiveoh_final_means)
+```
+
+Now pct=.75 missing data.
+
+```{r Seventy-Five Percent Missing}
+for(i in 1:nmethods){
+     filename <- paste0(methods[i],'_75.csv')
+     df <- as.data.frame(matrix(0,ncol=nvars,nrow=nsims))
+     colnames(df) <- vars
+     
+     if(i == 1){
+          print('Performing Hot Deck Imputation')
+          for(j in 1:nsims){
+               sevenfive <- prodNA(base, noNA=.75)
+               HD <- hotdeck(sevenfive, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],HD[,k])
+                    HD_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- HD_val$value
+               }
+          }
+     }     
+#     if(i == 2){
+#          print('Performing Iterative Robust Model-Based Imputation')
+#          for(j in 1:nsims){
+#               sevenfive <- prodNA(base, noNA=.75)
+#               IRMI <- irmi(sevenfive, imp_var=F)
+               
+#               for(k in 1:nvars){
+#                    comp_matx <- cbind(base[,k],IRMI[,k])
+#                    IRMI_val <- kappa2(comp_matx, weight="equal")
+#                    df[j,k] <- IRMI_val$value
+#               }
+#          }
+#     }   
+     if(i == 2){
+          print('Performing K-Nearest Neighbors Imputation')
+          for(j in 1:nsims){
+               sevenfive <- prodNA(base, noNA=.75)
+               KNN <- kNN(sevenfive, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],KNN[,k])
+                    KNN_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- KNN_val$value
+               }
+          }
+     }
+     if(i == 3){
+          print('Performing Variable Median Imputation')
+          for(j in 1:nsims){
+               sevenfive <- prodNA(base, noNA=.75)
+               VM <- impute(sevenfive)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],VM[,k])
+                    VM_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- VM_val$value
+               }
+          }
+     }
+    # path <- paste0('Kappa_Files/',filename)
+     write.csv(df, filename)
+}
+
+## Import simulated imputations for each tooth
+HD75 <- read.csv("HD_75.csv",row.names=1)
+KNN75 <- read.csv("KNN_75.csv",row.names=1)
+VM75 <- read.csv("VM_75.csv",row.names=1)
+
+## Create df to store kappa means
+sevenfive_final_means <- as.data.frame(matrix(0,ncol=nmethods+1,nrow=nvars+1))
+rownames(sevenfive_final_means) <- c(vars,"Method_mean")
+colnames(sevenfive_final_means) <- c(methods,"Trait_mean")
+
+for(m in 1:nmethods){
+     for(v in 1:nvars){
+          if(m == 1){
+               sevenfive_final_means[v,m] <- mean(HD75[,v])
+          }
+          if(m == 2){
+               sevenfive_final_means[v,m] <- mean(KNN75[,v])
+          }
+          if(m == 3){
+               sevenfive_final_means[v,m] <- mean(VM75[,v])
+          }
+     }
+}
+for(n in 1:nvars){
+     sevenfive_final_means[n,(nmethods+1)] <- rowMeans(sevenfive_final_means[n,c(1:nmethods)])
+}
+for(o in 1:nmethods){
+     sevenfive_final_means[(nvars+1),o] <- mean(sevenfive_final_means[c(1:nvars),o])
+}
+
+write.csv(sevenfive_final_means,"sevenfive_means.csv")
+
+print(sevenfive_final_means)
+```
+
+Now, pct=.9 missing data. We actually now know that this small dataset cannot handle 90% missing data because of small sample sizes...
+
+```{r Nintey Percent Missing, eval=FALSE}
+for(i in 1:nmethods){
+     filename <- paste0(methods[i],'_90.csv')
+     df <- as.data.frame(matrix(0,ncol=nvars,nrow=nsims))
+     colnames(df) <- vars
+     
+     if(i == 1){
+          print('Performing Hot Deck Imputation')
+          for(j in 1:nsims){
+               ninety <- prodNA(base, noNA=.9)
+               HD <- hotdeck(ninety, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],HD[,k])
+                    HD_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- HD_val$value
+               }
+          }
+     }     
+#     if(i == 2){
+#          print('Performing Iterative Robust Model-Based Imputation')
+#          for(j in 1:nsims){
+#               ninety <- prodNA(base, noNA=.9)
+#               IRMI <- irmi(ninety, imp_var=F)
+               
+#               for(k in 1:nvars){
+#                    comp_matx <- cbind(base[,k],IRMI[,k])
+#                    IRMI_val <- kappa2(comp_matx, weight="equal")
+#                    df[j,k] <- IRMI_val$value
+#               }
+#          }
+#     }   
+     if(i == 2){
+          print('Performing K-Nearest Neighbors Imputation')
+          for(j in 1:nsims){
+               ninety <- prodNA(base, noNA=.9)
+               KNN <- kNN(ninety, imp_var=F)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],KNN[,k])
+                    KNN_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- KNN_val$value
+               }
+          }
+     }
+     if(i == 3){
+          print('Performing Variable Median Imputation')
+          for(j in 1:nsims){
+               ninety <- prodNA(base, noNA=.9)
+               VM <- impute(ninety)
+               
+               for(k in 1:nvars){
+                    comp_matx <- cbind(base[,k],VM[,k])
+                    VM_val <- kappa2(comp_matx, weight="equal")
+                    df[j,k] <- VM_val$value
+               }
+          }
+     }
+    # path <- paste0('Kappa_Files/',filename)
+     write.csv(df, filename)
+}
+
+## Import simulated imputations for each tooth
+HD90 <- read.csv("HD_90.csv",row.names=1)
+KNN90 <- read.csv("KNN_90.csv",row.names=1)
+VM90 <- read.csv("VM_90.csv",row.names=1)
+
+## Create df to store kappa means
+ninety_final_means <- as.data.frame(matrix(0,ncol=nmethods+1,nrow=nvars+1))
+rownames(ninety_final_means) <- c(vars,"Method_mean")
+colnames(ninety_final_means) <- c(methods,"Trait_mean")
+
+for(m in 1:nmethods){
+     for(v in 1:nvars){
+          if(m == 1){
+               ninety_final_means[v,m] <- mean(HD90[,v])
+          }
+          if(m == 2){
+               ninety_final_means[v,m] <- mean(KNN90[,v])
+          }
+          if(m == 3){
+               ninety_final_means[v,m] <- mean(VM90[,v])
+          }
+     }
+}
+for(n in 1:nvars){
+     ninety_final_means[n,(nmethods+1)] <- rowMeans(ninety_final_means[n,c(1:nmethods)])
+}
+for(o in 1:nmethods){
+     ninety_final_means[(nvars+1),o] <- mean(ninety_final_means[c(1:nvars),o])
+}
+
+write.csv(ninety_final_means,"ninety_means.csv")
+
+print(ninety_final_means)
+```
+
+From our analysis, we discover that our imputation methods seem to break-down when there is 50% or more missing data. Additionally, we observe that at least for the small complete dataset that we have, the best method of imputation (producing the highest mean k value) is Variable Median, followed by k-NN, followed by Hot Deck.
+
+## Density Plots
+
+Because mean kappa values cannot be trusted as the best way to test the validity
+
+```{r Density Plots}
+library(gridExtra)
+
+## Hot Deck
+label <- rep("10%",nrow(HD10))
+HD10 <- cbind(label,HD10)
+label <- rep("25%",nrow(HD25))
+HD25 <- cbind(label,HD25)
+label <- rep("50%",nrow(HD50))
+HD50 <- cbind(label,HD50)
+label <- rep("75%",nrow(HD75))
+HD75 <- cbind(label,HD75)
+
+hotdeck <- rbind(HD10,HD25,HD50,HD75)
+method <- rep("Hot Deck", nrow(hotdeck))
+hotdeck <- cbind(method,hotdeck)
+
+ggplot(hotdeck, aes(P_U_I1_WING, fill=label)) + geom_histogram() + kyra_theme
+
+## KNN
+label <- rep("10%",nrow(KNN10))
+KNN10 <- cbind(label,KNN10)
+label <- rep("25%",nrow(KNN25))
+KNN25 <- cbind(label,KNN25)
+label <- rep("50%",nrow(KNN50))
+KNN50 <- cbind(label,KNN50)
+label <- rep("75%",nrow(KNN75))
+KNN75 <- cbind(label,KNN75)
+
+knn <- rbind(KNN10,KNN25,KNN50,KNN75)
+method <- rep("KNN", nrow(knn))
+knn <- cbind(method,knn)
+
+ggplot(knn, aes(P_U_I1_WING, fill=label)) + geom_histogram() + kyra_theme
+
+## VM
+label <- rep("10%",nrow(VM10))
+VM10 <- cbind(label,VM10)
+label <- rep("25%",nrow(VM25))
+VM25 <- cbind(label,VM25)
+label <- rep("50%",nrow(VM50))
+VM50 <- cbind(label,VM50)
+label <- rep("75%",nrow(VM75))
+VM75 <- cbind(label,VM75)
+
+vm <- rbind(VM10,VM25,VM50,VM75)
+method <- rep("VM", nrow(vm))
+vm <- cbind(method, vm)
+
+ggplot(vm, aes(P_U_I1_WING, fill=label)) + geom_histogram() + kyra_theme
+
+## Combined
+all_df <- rbind(hotdeck,knn,vm)
+variables <- colnames(all_df[,c(3:11)])
+
+par(mfrow(length(variables),1))
+
+for(i in 3:ncol(all_df)){
+     plot <- ggplot(all_df, aes(all_df[,i], fill=method)) + geom_density(alpha=.5) + kyra_theme
+     print(plot)
+}
+
+ggplot(all_df, aes(P_U_I1_WING, fill=method)) + geom_density(alpha=.5) + kyra_theme
+ggplot(all_df, aes(P_U_R1_SHOV, fill=method)) + geom_density(alpha=.5) + kyra_theme
+
+
+```
+
+
+
+
+
+
+## Bland-Altman Test
+
+This visually checks the simulated imputations of each method against the original dataset to see how different they are. 
+
+```{r Bland-Altman}
+library(BlandAltmanLeh)
+
+## pct=.1
+ba_ten <- bland.altman.plot(base, HD10, main="Hot Deck @ 10% Missing Data", xlab = "Means",ylab="Differences")
+
+
+
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
