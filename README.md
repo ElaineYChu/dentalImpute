@@ -8,12 +8,12 @@ Dental anthropology is a specialized subset of Biological anthropology that focu
 ### Project Objective
 The goal of this project was to test a number of data imputation techniques to explore which methods may be best applied to dental moprhological trait scores. The objective of these imputation methods is to preserve the general biodistance analyses trends observed between pre-defined groups of a complete set of selected dental traits.
 
-The following six (6) imputation methods were tested:  
+The following three (3) imputation methods were tested:  
 1. Hot Deck (HD)  
-2. Iterative Robust Model-Based Imputation (IRMI)  
-3. *k*-Nearest Neightbors (KNN)  
-4. Variable Medians (VM)  
-5. Bayesian Polytomous Regression (BPR)  
-6. Proportional Odds Model (POM)  
+2. *k*-Nearest Neightbors (KNN)  
+3. Variable Medians (VM)  
 
-Methodologies for simulating missing data and overall evaluation of each imputation method follow a similar workflow to that of Kenyhercz et al. (2019) using cranial morphological traits. 
+
+Methodologies for simulating missing data and overall evaluation of each imputation method follow a similar workflow to that of *Kenyhercz et al. (2019)* using cranial morphological traits. 
+
+Code and iterative processes are provided in **HTML** and **RMD** format.
