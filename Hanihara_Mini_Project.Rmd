@@ -1,0 +1,269 @@
+---
+title: "Hanihara Dental Project"
+author: "Elaine Y. Chu and Tatiana VM"
+date: "December 3, 2019"
+output: 
+  html_document:
+     theme: cerulean
+editor_options: 
+  chunk_output_type: console
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE, warning = FALSE, fig.path='Figures/', fig.ext='jpg', fig.width=8, fig.height=8, dpi=180)
+
+library(readxl)
+library(tidyverse)
+library(missForest)
+library(VIM)
+library(imputeMissings)
+library(irr)
+library(binda)
+library(ggdendro)
+library(gridExtra)
+library(dendextend)
+
+setwd("C:/Users/elain/Box Sync/Projects/w_Tatiana/ImputingScores/Pub")
+set.seed(123)
+```
+
+## Hanihara Dataset
+
+Here, we chose 4 distinct groups for our analysis: Euro, Aust, Mel, and NAm. 
+
+```{r Data Munge}
+og <- read.csv("Hanihara_cleaned_project.csv")
+
+## Choose Max Expression
+complete <- og
+complete$SHOV_UI2<-pmax(complete$SHOV_UI2_L,complete$SHOV_UI2_R)
+complete$MIT_UP1<-pmax(complete$MIT_UP1_L,complete$MIT_UP1_R)
+complete$MIT_UP2<-pmax(complete$MIT_UP2_L,complete$MIT_UP2_R)
+complete$X6CUP_LM1 <-pmax(complete$X6CUP_LM1_L,complete$X6CUP_LM1_R)
+complete$X7CUP_LM1<-pmax(complete$X7CUP_LM1_L,complete$X7CUP_LM1_R)
+complete$DTC_LM1<-pmax(complete$DTC_LM1_L,complete$DTC_LM1_R)
+complete$CNO_LM2<-pmax(complete$CNO_LM2_L,complete$CNO_LM2_R)
+complete$X6CUP_LM2<-pmax(complete$X6CUP_LM2_L,complete$X6CUP_LM2_R)
+
+complete <- complete[,c(2:3,24:31)]  # select only the max expressions
+complete[complete==-9] <- NA  # replace -9 with NA
+
+complete <- na.omit(complete)  # remove NAs
+complete$Pop <- as.factor(complete$Pop)
+complete$Sex <- as.factor(complete$Sex)
+
+summary(complete)
+
+write.csv(complete,"Hanihara_complete_cases.csv")
+
+## Testing Imputation Methods
+base <- complete[,c(3:10)]
+```
+
+First, we run MMD on the complete dataset, with no missing data.
+
+```{r Complete Dataset}
+### Dichotomize Data
+threshold <- c(1,1,1,1,1,1,5,5)  # set threshold values for each trait
+
+d_base <- as.data.frame(dichotomize(base, threshold))
+pops <- complete$Pop
+vars <- colnames(complete[,c(3:10)])
+d_base <- cbind(pops,d_base)
+
+## Separate pop groups
+Euro_base <- filter(d_base, pops=='Euro')
+Aust_base <- filter(d_base, pops=='Australian')
+Mel_base <- filter(d_base, pops=='Melanesia')
+NAm_base <- filter(d_base, pops=='NA_NatAm')
+
+## Calculate Frequencies
+freq_Euro_base <- colMeans(Euro_base[,c(2:9)])
+freq_Aust_base <- colMeans(Aust_base[,c(2:9)])
+freq_Mel_base <- colMeans(Mel_base[,c(2:9)])
+freq_NAm_base <- colMeans(NAm_base[,c(2:9)])
+
+freq_base <- rbind(freq_Euro_base,freq_Aust_base,freq_Mel_base,freq_NAm_base)
+rownames(freq_base) <- c("Euro","Aust","Mel","NAm")
+write.csv(freq_base, "Freq_Base.csv")
+
+## Calculate Sample sizes
+samp_Euro_base <- rep(nrow(Euro_base),ncol(Euro_base)-1)
+samp_Aust_base <- rep(nrow(Aust_base),ncol(Aust_base)-1)
+samp_Mel_base <- rep(nrow(Mel_base),ncol(Mel_base)-1)
+samp_NAm_base <- rep(nrow(NAm_base),ncol(NAm_base)-1)
+
+samp_base <- rbind(samp_Euro_base,samp_Aust_base,samp_Mel_base,samp_NAm_base)
+colnames(samp_base) <- vars
+rownames(samp_base) <- c("Euro","Aust","Mel","NAm")
+
+write.csv(samp_base, "Samp_Base.csv")
+
+## MMD For Base Data
+MMD_base <- read.csv("MMD_Base.csv")
+dend_base <- hclust(as.dist(MMD_base[,c(2:5)]), method='ward.D2')     
+p1 <- ggdendrogram(dend_base) + labs(title="Complete Dataset")
+p1
+```
+
+Next, we simulate missing data (50%) to mimic a realistic bioarch situation, and do an MMD on that.
+
+```{r Simulated Dataset}
+sim <- prodNA(base, noNA=.5)
+
+### Dichotomize Data
+d_sim <- as.data.frame(dichotomize(sim, threshold))
+d_sim <- cbind(pops,d_sim)
+
+## Separate pop groups
+Euro_sim <- filter(d_sim, pops=='Euro')
+Aust_sim <- filter(d_sim, pops=='Australian')
+Mel_sim <- filter(d_sim, pops=='Melanesia')
+NAm_sim <- filter(d_sim, pops=='NA_NatAm')
+
+## Calculate Frequencies
+freq_Euro_sim <- colMeans(Euro_sim[,c(2:9)], na.rm=TRUE)
+freq_Aust_sim <- colMeans(Aust_sim[,c(2:9)], na.rm=TRUE)
+freq_Mel_sim <- colMeans(Mel_sim[,c(2:9)], na.rm=TRUE)
+freq_NAm_sim <- colMeans(NAm_sim[,c(2:9)], na.rm=TRUE)
+
+freq_sim <- rbind(freq_Euro_sim,freq_Aust_sim,freq_Mel_sim,freq_NAm_sim)
+rownames(freq_sim) <- c("Euro","Aust","Mel","NAm")
+write.csv(freq_sim, "Freq_sim.csv")
+
+## Calculate Sample sizes
+samp_Euro_sim <- colSums(!is.na(Euro_sim[,c(2:9)]))
+samp_Aust_sim <-  colSums(!is.na(Aust_sim[,c(2:9)]))
+samp_Mel_sim <-  colSums(!is.na(Mel_sim[,c(2:9)]))
+samp_NAm_sim <-  colSums(!is.na(NAm_sim[,c(2:9)]))
+
+samp_sim <- rbind(samp_Euro_sim,samp_Aust_sim,samp_Mel_sim,samp_NAm_sim)
+colnames(samp_sim) <- vars
+rownames(samp_sim) <- c("Euro","Aust","Mel","NAm")
+
+write.csv(samp_sim, "Samp_sim.csv")
+
+## MMD For sim Data
+MMD_sim <- read.csv("MMD_sim.csv")
+dend_sim <- hclust(as.dist(MMD_sim[,c(2:5)]), method='ward.D2')     
+p2 <- ggdendrogram(dend_sim) + labs(title="Simulated Missing Data") 
+p2
+```
+
+Now, we test on an imputed dataset, using KNN. And then we run MMD.
+
+```{r Imputed Dataset}
+KNN_all <- kNN(sim,imp_var=F)
+
+### Dichotomize Data
+d_KNN_all <- as.data.frame(dichotomize(KNN_all, threshold))
+d_KNN_all <- cbind(pops,d_KNN_all)
+
+## Separate pop groups
+Euro_KNN_all <- filter(d_KNN_all, pops=='Euro')
+Aust_KNN_all <- filter(d_KNN_all, pops=='Australian')
+Mel_KNN_all <- filter(d_KNN_all, pops=='Melanesia')
+NAm_KNN_all <- filter(d_KNN_all, pops=='NA_NatAm')
+
+## Calculate Frequencies
+freq_Euro_KNN_all <- colMeans(Euro_KNN_all[,c(2:9)], na.rm=TRUE)
+freq_Aust_KNN_all <- colMeans(Aust_KNN_all[,c(2:9)], na.rm=TRUE)
+freq_Mel_KNN_all <- colMeans(Mel_KNN_all[,c(2:9)], na.rm=TRUE)
+freq_NAm_KNN_all <- colMeans(NAm_KNN_all[,c(2:9)], na.rm=TRUE)
+
+freq_KNN_all <- rbind(freq_Euro_KNN_all,freq_Aust_KNN_all,freq_Mel_KNN_all,freq_NAm_KNN_all)
+rownames(freq_KNN_all) <- c("Euro","Aust","Mel","NAm")
+write.csv(freq_KNN_all, "Freq_KNN_all.csv")
+
+## Calculate Sample sizes
+samp_Euro_KNN_all <- colSums(!is.na(Euro_KNN_all[,c(2:9)]))
+samp_Aust_KNN_all <-  colSums(!is.na(Aust_KNN_all[,c(2:9)]))
+samp_Mel_KNN_all <-  colSums(!is.na(Mel_KNN_all[,c(2:9)]))
+samp_NAm_KNN_all <-  colSums(!is.na(NAm_KNN_all[,c(2:9)]))
+
+samp_KNN_all <- rbind(samp_Euro_KNN_all,samp_Aust_KNN_all,samp_Mel_KNN_all,samp_NAm_KNN_all)
+colnames(samp_KNN_all) <- vars
+rownames(samp_KNN_all) <- c("Euro","Aust","Mel","NAm")
+
+write.csv(samp_KNN_all, "Samp_KNN_all.csv")
+
+## MMD For KNN_all Data
+MMD_KNN_all <- read.csv("MMD_KNN_all.csv")
+dend_KNN_all <- hclust(as.dist(MMD_KNN_all[,c(2:5)]), method='ward.D2')     
+p3 <- ggdendrogram(dend_KNN_all) + labs(title="KNN Together") 
+p3
+```
+
+Yay! Now, we should impute the data by each population and see what it looks like.
+
+```{r Imputed Separately Dataset}
+## Separate Datasets
+sim_labeled <- cbind(pops, sim)
+Euro_sep <- filter(sim_labeled, pops=="Euro")
+Aust_sep <- filter(sim_labeled, pops=="Australian")
+Mel_sep <- filter(sim_labeled, pops=='Melanesia')
+NAm_sep <- filter(sim_labeled, pops=='NA_NatAm')
+
+## Impute Data
+Euro_sim <- kNN(Euro_sep,imp_var=F)
+Aust_sim <- kNN(Aust_sep,imp_var=F)
+Mel_sim <- kNN(Mel_sep,imp_var=F)
+NAm_sim <- kNN(NAm_sep,imp_var=F)
+
+### Dichotomize Data
+d_Euro_sim <- as.data.frame(dichotomize(Euro_sim[,c(2:9)], threshold))
+geo_tag <- rep("Euro",nrow(d_Euro_sim))
+d_Euro_sim <- cbind(geo_tag,d_Euro_sim)
+
+d_Aust_sim <- as.data.frame(dichotomize(Aust_sim[,c(2:9)], threshold))
+geo_tag <- rep("Aust",nrow(d_Aust_sim))
+d_Aust_sim <- cbind(geo_tag,d_Aust_sim)
+
+d_Mel_sim <- as.data.frame(dichotomize(Mel_sim[,c(2:9)], threshold))
+geo_tag <- rep("Mel",nrow(d_Mel_sim))
+d_Mel_sim <- cbind(geo_tag,d_Mel_sim)
+
+d_NAm_sim <- as.data.frame(dichotomize(NAm_sim[,c(2:9)], threshold))
+geo_tag <- rep("NAm",nrow(d_NAm_sim))
+d_NAm_sim <- cbind(geo_tag,d_NAm_sim)
+
+## Calculate Frequencies
+freq_Euro_sim <- colMeans(d_Euro_sim[,c(2:9)], na.rm=TRUE)
+freq_Aust_sim <- colMeans(d_Aust_sim[,c(2:9)], na.rm=TRUE)
+freq_Mel_sim <- colMeans(d_Mel_sim[,c(2:9)], na.rm=TRUE)
+freq_NAm_sim <- colMeans(d_NAm_sim[,c(2:9)], na.rm=TRUE)
+
+freq_KNN_sep <- rbind(freq_Euro_sim,freq_Aust_sim,freq_Mel_sim,freq_NAm_sim)
+rownames(freq_KNN_sep) <- c("Euro","Aust","Mel","NAm")
+write.csv(freq_KNN_sep, "Freq_KNN_sep.csv")
+
+## Calculate Sample sizes
+samp_Euro_KNN_sep <- colSums(!is.na(Euro_sim[,c(2:9)]))
+samp_Aust_KNN_sep <-  colSums(!is.na(Aust_sim[,c(2:9)]))
+samp_Mel_KNN_sep <-  colSums(!is.na(Mel_sim[,c(2:9)]))
+samp_NAm_KNN_sep <-  colSums(!is.na(NAm_sim[,c(2:9)]))
+
+samp_KNN_sep <- rbind(samp_Euro_KNN_sep,samp_Aust_KNN_sep,samp_Mel_KNN_sep,samp_NAm_KNN_sep)
+colnames(samp_KNN_sep) <- vars
+rownames(samp_KNN_sep) <- c("Euro","Aust","Mel","NAm")
+
+write.csv(samp_KNN_sep, "Samp_KNN_sep.csv")
+
+## MMD For KNN_sep Data
+MMD_KNN_sep <- read.csv("MMD_KNN_sep.csv")
+dend_KNN_sep <- hclust(as.dist(MMD_KNN_sep[,c(2:5)]), method='ward.D2')     
+p4 <- ggdendrogram(dend_KNN_sep) + ylim(0,1) + labs(title="KNN Separately")
+p4
+```
+
+Now, we can grid the plots together to compare the four plots!
+
+```{r Dend Comparison}
+grid.arrange(p1,p2,p3,p4,ncol=2)
+
+```
+
+
+
+
+
