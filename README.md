@@ -16,4 +16,6 @@ The following three (3) imputation methods were tested:
 
 Methodologies for simulating missing data and overall evaluation of each imputation method follow a similar workflow to that of *Kenyhercz et al. (2019)* using cranial morphological traits. 
 
+Following the identification of *k*-Nearest Neighbor as the best-performing imputation method on simulated missing data, the method was applied to another dataset to ensure among-population relationships were reatained when imputation was conducted.
+
 Code and iterative processes are provided in **HTML** and **RMD** format.
