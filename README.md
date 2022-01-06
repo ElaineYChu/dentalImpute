@@ -1,7 +1,4 @@
 # dentalImpute
-
-This repository houses the RMD and HTML files for a class project conducted in Fall 2019 for ANTH 664: Dental Anthropology. 
-
 ### The Problem
 Dental anthropology is a specialized subset of Biological anthropology that focuses on the development and morphology of dentition. Most of the data that dental anthropologists work with on the morphological side are discrete and/or ordinal traits. When working with bioarchaeological skeletal collections, traits are often unable to be scored due to missing teeth or extreme wear of the enamel. Therefore, dental anthropological data is wrought with missing data. As a result, most dental anthropological methods use breakpoints to collapse raw data into absense (0) and presence (1), followed by frequency calculations to allow for the use of continuous data. The loss of dental morphological variation when applying such methodology is vast, and additional avenues of data analyses should be explored.
 
