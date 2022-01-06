@@ -11,7 +11,7 @@ The following three (3) imputation methods were tested:
 3. Variable Medians (VM)  
 
 
-Methodologies for simulating missing data and overall evaluation of each imputation method follow a similar workflow to that of *Kenyhercz et al. (2019)* using cranial morphological traits. 
+Methodologies for simulating missing data and overall evaluation of each imputation method follow a similar workflow to that of [Kenyhercz et al. (2019)](https://doi.org/10.5744/fa.2019.1015) using cranial morphological traits. 
 
 Following the identification of *k*-Nearest Neighbor as the best-performing imputation method on simulated missing data, the method was applied to another dataset to ensure among-population relationships were reatained when imputation was conducted.
 
